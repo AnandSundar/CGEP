@@ -1,0 +1,36 @@
+# Terraform
+.terraform/
+.terraform.lock.hcl.bak
+*.tfstate
+*.tfstate.*
+*.tfstate.backup
+crash.log
+crash.*.log
+
+# Plan and variable files (often contain secrets)
+tfplan
+*.tfvars
+*.tfvars.json
+!example.tfvars
+
+# Local override directories
+override/
+.auto.tfvars
+.auto.tfvars.json
+
+# Evidence files (state/plan data, may contain sensitive resource details)
+**/evidence/state.json
+**/evidence/plan.json
+**/evidence/*.json
+**/evidence/.gitkeep
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+*~
+
+# Logs
+*.log
