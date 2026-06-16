@@ -24,6 +24,10 @@ override/
 **/evidence/*.json
 **/evidence/.gitkeep
 
+# Portfolio evidence (lab-2-4): committed for portfolio submission
+!evidence/lab-2-4/plan.json
+!evidence/lab-2-4/compliance_attestation.json
+
 # OS / editor
 .DS_Store
 Thumbs.db
