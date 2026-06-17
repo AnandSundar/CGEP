@@ -7,11 +7,24 @@ and is evaluated against a Terraform plan (`terraform/plan.json`) produced by
 
 ## Policies
 
-| Control | Severity | File | Package |
-|---------|----------|------|---------|
-| [AC-3](#ac-3--access-enforcement) | critical | [`ac3_no_public.rego`](./ac3_no_public.rego) | `compliance.ac3` |
-| [CM-6](#cm-6--configuration-settings) | medium | [`cm6_required_tags.rego`](./cm6_required_tags.rego) | `compliance.cm6` |
-| [SC-28](#sc-28--protection-of-information-at-rest) | high | [`sc28_encryption.rego`](./sc28_encryption.rego) | `compliance.sc28` |
+Six files, three control IDs, two clouds. The original three target **GCP**
+(`google_storage_bucket` / `google_compute_*`); the three `_aws.rego` variants
+target **AWS** (`aws_s3_bucket` / `aws_s3_bucket_public_access_block` /
+`aws_s3_bucket_server_side_encryption_configuration`).
+
+| Control | Cloud | Severity | File | Package |
+|---------|-------|----------|------|---------|
+| AC-3 | GCP | critical | [`ac3_no_public.rego`](./ac3_no_public.rego) | `compliance.ac3` |
+| AC-3 | AWS | critical | [`ac3_no_public_aws.rego`](./ac3_no_public_aws.rego) | `compliance.ac3_aws` |
+| CM-6 | GCP | medium | [`cm6_required_tags.rego`](./cm6_required_tags.rego) | `compliance.cm6` |
+| CM-6 | AWS | medium | [`cm6_required_tags_aws.rego`](./cm6_required_tags_aws.rego) | `compliance.cm6_aws` |
+| SC-28 | GCP | high | [`sc28_encryption.rego`](./sc28_encryption.rego) | `compliance.sc28` |
+| SC-28 | AWS | high | [`sc28_encryption_aws.rego`](./sc28_encryption_aws.rego) | `compliance.sc28_aws` |
+
+The policy gate ([`scripts/policy-gate.sh`](../scripts/policy-gate.sh))
+evaluates the four AWS-targeted namespaces against any `plan.json` produced
+by `terraform show -json tfplan`, plus the GCP `compliance.cm6` namespace
+for legacy coverage.
 
 ---
 

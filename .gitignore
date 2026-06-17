@@ -31,6 +31,9 @@ override/
 # Portfolio evidence (lab-3-3): committed for portfolio submission
 !evidence/lab-3-3/
 
+# Portfolio evidence (lab-3-4): committed for portfolio submission
+!evidence/lab-3-4/
+
 # OS / editor
 .DS_Store
 Thumbs.db

@@ -1,0 +1,30 @@
+[
+[
+	{
+		"filename": "lab-2-3/primitives/compliant-s3/plan.json",
+		"namespace": "compliance.sc28_aws",
+		"successes": 1
+	}
+]
+,[
+	{
+		"filename": "lab-2-3/primitives/compliant-s3/plan.json",
+		"namespace": "compliance.ac3_aws",
+		"successes": 1
+	}
+]
+,[
+	{
+		"filename": "lab-2-3/primitives/compliant-s3/plan.json",
+		"namespace": "compliance.cm6_aws",
+		"successes": 1
+	}
+]
+,[
+	{
+		"filename": "lab-2-3/primitives/compliant-s3/plan.json",
+		"namespace": "compliance.cm6",
+		"successes": 1
+	}
+]
+]
