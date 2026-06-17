@@ -28,6 +28,9 @@ override/
 !evidence/lab-2-4/plan.json
 !evidence/lab-2-4/compliance_attestation.json
 
+# Portfolio evidence (lab-3-3): committed for portfolio submission
+!evidence/lab-3-3/
+
 # OS / editor
 .DS_Store
 Thumbs.db
