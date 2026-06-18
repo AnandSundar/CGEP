@@ -1,100 +1,68 @@
 # terraform/main.tf
-# Clean compliance baseline: every resource satisfies SC-28, AC-3, and CM-6.
-# Run `opa eval` against terraform/plan.json — every deny set should be empty.
+# AWS compliance baseline (Lab 2.3) wired into the Lab 4.3 evidence pipeline.
+# The grc-gate workflow plans this on every PR; Conftest + tfsec evaluate plan.json.
+#
+# CM-3 (configuration change control): every resource declared here.
+# CM-6 (configuration settings):       default_tags below enforce the four required tags.
+# SC-28 (protection of information at rest): composed via primitives/compliant-s3.
+# AC-3  (access enforcement):           public access block in the primitive.
+# AU-3 / AU-6 / AU-9 (audit):           server access logs in the primitive; vault in Lab 2.5.
 
 terraform {
   required_version = ">= 1.6"
   required_providers {
-    google = { source = "hashicorp/google", version = "~> 5.0" }
+    aws    = { source = "hashicorp/aws",    version = "~> 5.0" }
+    random = { source = "hashicorp/random", version = "~> 3.6" }
   }
 }
 
-provider "google" {
-  project = var.gcp_project
-  region  = "us-central1"
-}
+provider "aws" {
+  region = "us-east-1"
 
-variable "gcp_project" { type = string }
-
-# --- KMS for CMEK ------------------------------------------------------
-resource "google_kms_key_ring" "ring" {
-  name     = "lab33-ring"
-  location = "us-central1"
-}
-
-resource "google_kms_crypto_key" "key" {
-  name     = "lab33-key"
-  key_ring = google_kms_key_ring.ring.id
-}
-
-# --- Network ----------------------------------------------------------
-resource "google_compute_network" "demo" {
-  name                    = "lab33-demo"
-  auto_create_subnetworks = false
-}
-
-# --- Firewall: HTTPS from internal range only (no public mgmt ports) -
-resource "google_compute_firewall" "internal_https" {
-  name          = "lab33-internal-https"
-  network       = google_compute_network.demo.name
-  direction     = "INGRESS"
-  source_ranges = ["10.0.0.0/8"]
-  allow {
-    protocol = "tcp"
-    ports    = ["443"]
+  # CM-6: default_tags enforce the four required tags on every taggable
+  # resource. Removes the chance of forgetting them on a new resource block.
+  default_tags {
+    tags = {
+      Project         = var.project_name
+      Environment     = var.environment
+      ManagedBy       = "terraform"
+      ComplianceScope = "cge-p-lab"
+    }
   }
 }
 
-# --- Compliant GCS bucket: CMEK, locked down, all four labels --------
-resource "google_storage_bucket" "good" {
-  name                        = "${var.gcp_project}-lab33-good"
-  location                    = "us-central1"
-  uniform_bucket_level_access = true
-  public_access_prevention    = "enforced"
-
-  encryption { default_kms_key_name = google_kms_crypto_key.key.id }
-
-  labels = {
-    project          = "lab33"
-    environment      = "dev"
-    managed_by       = "terraform"
-    compliance_scope = "cge-p-lab"
-  }
+variable "project_name" {
+  type        = string
+  description = "Short project identifier used in bucket names and the Project tag."
+  default     = "cgep"
 }
 
-# --- Compliant compute instance: all four labels ---------------------
-resource "google_compute_instance" "compliant_vm" {
-  name         = "lab33-compliant-vm"
-  machine_type = "e2-medium"
-  zone         = "us-central1-a"
-
-  boot_disk {
-    initialize_params { image = "debian-cloud/debian-12" }
-  }
-
-  network_interface {
-    network = google_compute_network.demo.name
-  }
-
-  labels = {
-    project          = "lab33"
-    environment      = "dev"
-    managed_by       = "terraform"
-    compliance_scope = "cge-p-lab"
-  }
+variable "environment" {
+  type        = string
+  description = "Deployment environment (dev, staging, prod). Drives the Environment tag."
+  default     = "dev"
 }
 
-# --- Compliant compute disk: all four labels -------------------------
-resource "google_compute_disk" "compliant_disk" {
-  name = "lab33-compliant-disk"
-  zone = "us-central1-a"
-  type = "pd-standard"
-  size = 10
+# Compose the Lab 2.3 compliant-s3 primitive. SC-28 (encryption + versioning),
+# AC-3 (public access block), CM-6 (tagging via default_tags), AU-3/AU-6 (logs).
+module "data_bucket" {
+  source = "./primitives/compliant-s3"
 
-  labels = {
-    project          = "lab33"
-    environment      = "dev"
-    managed_by       = "terraform"
-    compliance_scope = "cge-p-lab"
-  }
+  project_name = var.project_name
+  environment  = var.environment
 }
+
+# Compose the Lab 2.5 evidence vault so the OIDC plan also exercises
+# object-lock / retention / deny-delete controls.
+module "evidence_vault" {
+  source = "./primitives/evidence-vault"
+
+  project_name   = var.project_name
+  lock_mode      = "GOVERNANCE"
+  retention_days = 90
+}
+
+output "data_bucket_name" { value = module.data_bucket.bucket_name }
+output "data_bucket_arn"  { value = module.data_bucket.bucket_arn }
+output "data_encryption"  { value = module.data_bucket.encryption_algorithm }
+output "vault_name"       { value = module.evidence_vault.vault_name }
