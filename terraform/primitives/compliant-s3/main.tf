@@ -32,31 +32,83 @@ locals {
   log_name         = "${var.project_name}-${var.environment}-logs-${local.effective_suffix}"
 }
 
+data "aws_caller_identity" "current" {}
+
+# SC-12: cryptographic key establishment. We own the key, not AWS.
+# SC-13: cryptographic protection — CMK with annual automatic rotation.
+# Key policy grants the S3 service and S3 log delivery service use of the key,
+# scoped to this account via aws:SourceAccount (avoids confused-deputy).
+resource "aws_kms_key" "bucket" {
+  description         = "CMK for ${var.project_name}-${var.environment} S3 buckets"
+  enable_key_rotation = true
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid       = "EnableRootAccountFullAccess"
+        Effect    = "Allow"
+        Principal = { AWS = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:root" }
+        Action    = "kms:*"
+        Resource  = "*"
+      },
+      {
+        Sid       = "AllowS3ServiceUse"
+        Effect    = "Allow"
+        Principal = { Service = "s3.amazonaws.com" }
+        Action = [
+          "kms:Encrypt",
+          "kms:Decrypt",
+          "kms:ReEncrypt*",
+          "kms:GenerateDataKey*",
+          "kms:DescribeKey"
+        ]
+        Resource = "*"
+        Condition = {
+          StringEquals = { "aws:SourceAccount" = data.aws_caller_identity.current.account_id }
+        }
+      },
+      {
+        Sid       = "AllowS3LogDelivery"
+        Effect    = "Allow"
+        Principal = { Service = "logging.s3.amazonaws.com" }
+        Action = [
+          "kms:Encrypt",
+          "kms:GenerateDataKey",
+          "kms:DescribeKey"
+        ]
+        Resource = "*"
+        Condition = {
+          StringEquals = { "aws:SourceAccount" = data.aws_caller_identity.current.account_id }
+        }
+      }
+    ]
+  })
+}
+
+resource "aws_kms_alias" "bucket" {
+  name          = "alias/${var.project_name}-${var.environment}-s3"
+  target_key_id = aws_kms_key.bucket.id
+}
+
 resource "aws_s3_bucket" "primary" {
   bucket = local.primary_name
 }
 
 # main.tf (continued)
 
-# SC-28: Protection of information at rest.
-# AES-256 keeps this lab simple. The commented block below shows how you'd
-# switch to KMS-managed keys, covered in a later lab.
+# SC-28: Protection of information at rest — customer-managed KMS key.
+# CMKs give key rotation, audit trail, and separation of duties that S3-managed
+# AES256 cannot. bucket_key_enabled reduces KMS request costs (~$0.03/10k req).
 resource "aws_s3_bucket_server_side_encryption_configuration" "primary" {
   bucket = aws_s3_bucket.primary.id
   rule {
     apply_server_side_encryption_by_default {
-      sse_algorithm = "AES256"
+      sse_algorithm     = "aws:kms"
+      kms_master_key_id = aws_kms_key.bucket.arn
     }
+    bucket_key_enabled = true
   }
-
-  # KMS teaser:
-  # rule {
-  #   apply_server_side_encryption_by_default {
-  #     sse_algorithm     = "aws:kms"
-  #     kms_master_key_id = aws_kms_key.bucket.arn
-  #   }
-  #   bucket_key_enabled = true
-  # }
 }
 
 # CM-6: Versioning preserves prior object states for recovery and audit.
@@ -99,7 +151,11 @@ resource "aws_s3_bucket_acl" "log" {
 resource "aws_s3_bucket_server_side_encryption_configuration" "log" {
   bucket = aws_s3_bucket.log.id
   rule {
-    apply_server_side_encryption_by_default { sse_algorithm = "AES256" }
+    apply_server_side_encryption_by_default {
+      sse_algorithm     = "aws:kms"
+      kms_master_key_id = aws_kms_key.bucket.arn
+    }
+    bucket_key_enabled = true
   }
 }
 
