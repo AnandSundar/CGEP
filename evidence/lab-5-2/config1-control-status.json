@@ -1,0 +1,18 @@
+[
+    {
+        "StandardsControlArn": "arn:aws:securityhub:us-east-1:348342704892:control/nist-800-53/v/5.0.0/Config.1",
+        "ControlStatus": "ENABLED",
+        "ControlStatusUpdatedAt": "2026-06-20T00:57:54.391000+00:00",
+        "ControlId": "Config.1",
+        "Title": "AWS Config should be enabled and use the service-linked role for resource recording",
+        "Description": "This control checks whether AWS Config is enabled in your account in the current AWS Region, records all resources that correspond to controls that are enabled in the current Region, and uses the service-linked AWS Config role.",
+        "RemediationUrl": "https://docs.aws.amazon.com/console/securityhub/Config.1/remediation",
+        "SeverityRating": "CRITICAL",
+        "RelatedRequirements": [
+            "NIST.800-53.r5 CM-3",
+            "NIST.800-53.r5 CM-6(1)",
+            "NIST.800-53.r5 CM-8",
+            "NIST.800-53.r5 CM-8(2)"
+        ]
+    }
+]
