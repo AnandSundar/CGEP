@@ -7,15 +7,18 @@ and is evaluated against a Terraform plan (`terraform/plan.json`) produced by
 
 ## Policies
 
-Six files, three control IDs, two clouds. The original three target **GCP**
+Seven files, four control IDs, two clouds. The original three target **GCP**
 (`google_storage_bucket` / `google_compute_*`); the three `_aws.rego` variants
 target **AWS** (`aws_s3_bucket` / `aws_s3_bucket_public_access_block` /
-`aws_s3_bucket_server_side_encryption_configuration`).
+`aws_s3_bucket_server_side_encryption_configuration`). The seventh — `au2_`
+— targets the GCP `google_project_iam_audit_config` resources introduced by
+Lab 5.4.
 
 | Control | Cloud | Severity | File | Package |
 |---------|-------|----------|------|---------|
 | AC-3 | GCP | critical | [`ac3_no_public.rego`](./ac3_no_public.rego) | `compliance.ac3` |
 | AC-3 | AWS | critical | [`ac3_no_public_aws.rego`](./ac3_no_public_aws.rego) | `compliance.ac3_aws` |
+| AU-2 | GCP | high | [`au2_data_access_logs_gcp.rego`](./au2_data_access_logs_gcp.rego) | `compliance.au2_gcp` |
 | CM-6 | GCP | medium | [`cm6_required_tags.rego`](./cm6_required_tags.rego) | `compliance.cm6` |
 | CM-6 | AWS | medium | [`cm6_required_tags_aws.rego`](./cm6_required_tags_aws.rego) | `compliance.cm6_aws` |
 | SC-28 | GCP | high | [`sc28_encryption.rego`](./sc28_encryption.rego) | `compliance.sc28` |
@@ -23,8 +26,8 @@ target **AWS** (`aws_s3_bucket` / `aws_s3_bucket_public_access_block` /
 
 The policy gate ([`scripts/policy-gate.sh`](../scripts/policy-gate.sh))
 evaluates the four AWS-targeted namespaces against any `plan.json` produced
-by `terraform show -json tfplan`, plus the GCP `compliance.cm6` namespace
-for legacy coverage.
+by `terraform show -json tfplan`, plus the GCP `compliance.cm6` and
+`compliance.au2_gcp` namespaces for Lab 5.4 coverage.
 
 ---
 
@@ -62,6 +65,29 @@ for legacy coverage.
 - **Tests:** [`tests/cm6_required_tags_test.rego`](./tests/cm6_required_tags_test.rego)
   covers a fully-labeled resource, a partially-labeled resource, and a
   resource with no labels at all.
+
+---
+
+### AU-2 — Data Access Audit Logs (GCP)
+
+- **Control ID:** AU-2
+- **Framework:** NIST SP 800-53
+- **Severity:** high
+- **File:** [`au2_data_access_logs_gcp.rego`](./au2_data_access_logs_gcp.rego)
+- **What it covers:** Every required GCP service must have a
+  `google_project_iam_audit_config` with `DATA_READ`, `DATA_WRITE`,
+  and `ADMIN_READ` enabled. Lab 5.4 requires this for
+  `storage.googleapis.com`, `cloudkms.googleapis.com`, and
+  `iam.googleapis.com`. Data Access logs are off by default in GCP —
+  this gate catches a silent regression.
+- **Remediation:** Add a `google_project_iam_audit_config` resource
+  for each missing service, with three `audit_log_config { log_type = ... }`
+  blocks (`DATA_READ`, `DATA_WRITE`, `ADMIN_READ`). See
+  [`terraform/baselines/gcp/audit_logs.tf`](../terraform/baselines/gcp/audit_logs.tf)
+  for the canonical implementation.
+- **Tests:** [`tests/au2_data_access_logs_gcp_test.rego`](./tests/au2_data_access_logs_gcp_test.rego)
+  covers a fully-compliant baseline, a missing-service scenario, a
+  partial-log-types regression, and a completely-empty input.
 
 ### SC-28 — Protection of Information at Rest
 

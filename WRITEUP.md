@@ -151,3 +151,72 @@ CHAIN INTACT for run 27730875500
 | **AU-9** Protection of Audit Information | Object Lock in Compliance mode prevents retroactive deletion or modification, even by the bucket owner. |
 | **SI-7** Software, Firmware, and Information Integrity | SHA-256 sidecar + cosign signature together detect any byte-level mutation of stored evidence. |
 | **SR-4** Provenance | Rekor transparency log entry proves the artifact was produced by *this specific* workflow run, not a re-signed copy. |
+
+---
+
+# Lab 5.4 — GCP Security Services Baseline
+
+GCP's identity-first security model applied at project scope: three Org
+Policies enforced at the API (CM-6, AC-2, AC-3), Workload Identity
+Federation replacing service account JSON keys (AC-2), and Data
+Access audit logs turned on for the three services that matter
+(AU-2). The full implementation lives under
+[`terraform/baselines/gcp/`](terraform/baselines/gcp/), the demo
+WIF workflow at [`.github/workflows/gcp-wif-demo.yml`](.github/workflows/gcp-wif-demo.yml),
+and the Rego gate at
+[`policies/au2_data_access_logs_gcp.rego`](policies/au2_data_access_logs_gcp.rego).
+
+## The lesson: "Data Access logs are off by default"
+
+A brand-new GCP project has `auditConfigs: []`. `ADMIN_READ` is
+enabled for most services (which captures `SetIamPolicy`,
+`CreateServiceAccount`, etc. — administrative events), but
+`DATA_READ` and `DATA_WRITE` are NOT enabled for any service. The
+question "who read this object?" is unanswerable until you turn them
+on. This is the most-cited GCP audit finding because nobody turns
+them on.
+
+The Lab 5.4 baseline turns them on for storage, KMS, and IAM. The
+[`compliance.au2_gcp`](policies/au2_data_access_logs_gcp.rego) Rego
+gate makes sure a future change can't silently re-disable them —
+the policy evaluates the Terraform plan and refuses to merge if any
+of the three services loses one of the three log types. The
+corresponding evidence is the `auditConfigs` block in
+[`evidence/lab-5-4/iam-policy.example.json`](evidence/lab-5-4/iam-policy.example.json)
+(replaced with a live `gcloud projects get-iam-policy` capture after
+apply).
+
+## The lesson: identity-first vs detective
+
+| Layer | Where it acts | Latency |
+|---|---|---|
+| Org Policy (`enforce = "TRUE"`) | At the API call. The bad request is REJECTED. | 5-10 minutes for first-apply propagation |
+| Workload Identity Federation | At authentication. The bad token is rejected. | One OIDC round-trip |
+| Data Access audit logs | After the fact. The bad action is recorded. | 30 seconds |
+| Conftest (`compliance.au2_gcp`) | At PR time. The bad plan is rejected. | Seconds |
+
+The first three are GCP-native. The fourth is the CGEP portfolio's
+own layer — detective code-review-time gate that catches a
+configuration regression before it ever reaches `terraform apply`.
+Stack them and "disable Data Access logs" requires deleting the
+Rego gate, the Terraform resource, the Org Policy's negation, AND
+the IAM binding — four different reviews.
+
+## How this lab interacts with the GRC gate
+
+The grc-gate workflow ([`.github/workflows/grc-gate.yml`](.github/workflows/grc-gate.yml))
+runs `conftest test` against five namespaces:
+
+```
+compliance.sc28_aws     compliance.ac3_aws
+compliance.cm6_aws      compliance.cm6      compliance.au2_gcp
+```
+
+`compliance.au2_gcp` is the Lab 5.4 namespace. When the gate runs
+against a `terraform/plan.json` produced from a checkout that does
+NOT include the GCP baseline (e.g. the root `terraform/` consumer
+tree), there are no `google_project_iam_audit_config` resources in
+the plan and the gate emits zero deny messages — passes by
+construction. When the gate runs against a `plan.json` produced
+from `terraform/baselines/gcp/`, the gate fires if any of the
+three services is missing or incomplete.

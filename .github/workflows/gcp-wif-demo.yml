@@ -1,0 +1,75 @@
+# .github/workflows/gcp-wif-demo.yml
+# Lab 5.4 — demo: GitHub Actions authenticating to GCP via WIF
+#
+# No service account JSON key. The token is minted at job start,
+# expires after one hour, and never lands on disk. This is the
+# GCP equivalent of the AWS OIDC pattern in .github/workflows/
+# grc-gate.yml (configure-aws-credentials).
+#
+# Required repo variables (Settings → Secrets and variables →
+# Actions → Variables):
+#   GCP_WIF_PROVIDER  — output of `terraform apply -auto-approve`
+#                       `wif_provider_name`, e.g.
+#                       projects/1234567890/locations/global/
+#                       workloadIdentityPools/github-actions/providers/github
+#   GCP_WIF_SA_EMAIL  — output of `terraform apply` `service_account_email`,
+#                       e.g. cgep-grc-gate-sa@your-project.iam.gserviceaccount.com
+#
+# This workflow runs from any GitHub repo. The WIF side enforces
+# that the repo matches `attribute.repository` in
+# workload_identity.tf; if the workflow runs from anywhere else,
+# google-github-actions/auth@v2 fails with PERMISSION_DENIED before
+# any gcloud command executes.
+
+name: gcp-wif-demo
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [main]
+
+permissions:
+  id-token: write   # required to mint the OIDC token (otherwise auth@v2 fails)
+  contents: read
+
+jobs:
+  gcp-read-via-wif:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Authenticate to GCP via Workload Identity Federation
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ vars.GCP_WIF_SA_EMAIL }}
+
+      - name: Show authenticated principal
+        # After auth@v2, ADC is set to the impersonated SA. The
+        # command proves the OIDC swap worked: the output is the
+        # SA email, NOT the GHA bot identity.
+        run: gcloud config get-value account
+
+      - name: Read-only demo (GCS list)
+        # roles/viewer is enough to list buckets and objects. If
+        # the WIF attribute_condition excluded this repo, this
+        # command would fail with PERMISSION_DENIED at the API —
+        # the OIDC swap never happened.
+        run: gcloud storage ls || true
+
+      - name: Demonstrate the key-creation lockdown
+        # This is the lab's signature lesson: the
+        # iam.disableServiceAccountKeyCreation Org Policy REJECTS
+        # this command even though the caller has iam.serviceAccountKeyAdmin
+        # via roles/owner. The org policy sits above IAM. The
+        # expected error is FAILED_PRECONDITION, NOT PERMISSION_DENIED.
+        run: |
+          if gcloud iam service-accounts keys create /tmp/should-not-exist.json \
+               --iam-account="${{ vars.GCP_WIF_SA_EMAIL }}" 2>&1 \
+               | tee /tmp/key-creation-output.txt; then
+            echo "FAIL: key creation was NOT rejected — Org Policy is not in effect"
+            exit 1
+          fi
+          grep -q "FAILED_PRECONDITION" /tmp/key-creation-output.txt \
+            && echo "OK: Org Policy rejected the key creation as expected" \
+            || (echo "FAIL: unexpected error output"; exit 1)

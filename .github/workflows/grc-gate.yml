@@ -59,7 +59,11 @@ jobs:
           {
             echo "["
             FIRST=1
-            for ns in compliance.sc28_aws compliance.ac3_aws compliance.cm6_aws compliance.cm6 ; do
+            # The _aws namespaces target the AWS baseline (Lab 5.2);
+            # compliance.au2_gcp targets the GCP baseline (Lab 5.4);
+            # compliance.cm6 is the original GCP label gate kept for
+            # legacy coverage of the cgep-app-starter consumer.
+            for ns in compliance.sc28_aws compliance.ac3_aws compliance.cm6_aws compliance.cm6 compliance.au2_gcp ; do
               [[ $FIRST -eq 1 ]] && FIRST=0 || printf ","
               conftest test --policy ../policies --namespace "$ns" --output=json plan.json || true
             done
