@@ -1,0 +1,20 @@
+=== SA key creation attempt ===
+command: gcloud iam service-accounts create gha-tf-test-NNN --project=project-a383fc9e-52f5-406a-9e8
+command: gcloud iam service-accounts keys create /tmp/sa-key.json --iam-account=$SA
+
+=== step 1: create SA (allowed; not restricted by any policy) ===
+Created service account [gha-tf-test-1782336662].
+  -> SA created
+
+=== step 2: attempt to create a JSON key (should be REJECTED) ===
+  using SA: gha-tf-test-1782336662@project-a383fc9e-52f5-406a-9e8.iam.gserviceaccount.com
+ERROR: (gcloud.iam.service-accounts.keys.create) FAILED_PRECONDITION: Key creation is not allowed on this service account.
+- '@type': type.googleapis.com/google.rpc.PreconditionFailure
+  violations:
+  - description: Key creation is not allowed on this service account.
+    subject: projects/project-a383fc9e-52f5-406a-9e8/serviceAccounts/gha-tf-test-1782336662@project-a383fc9e-52f5-406a-9e8.iam.gserviceaccount.com?configvalue=gha-tf-test-1782336662%40project-a383fc9e-52f5-406a-9e8.iam.gserviceaccount.com
+    type: constraints/iam.disableServiceAccountKeyCreation
+  -> POLICY REJECTED: key creation denied by iam.disableServiceAccountKeyCreation
+
+=== cleanup: delete the test SA ===
+deleted service account [gha-tf-test-1782336662@project-a383fc9e-52f5-406a-9e8.iam.gserviceaccount.com]

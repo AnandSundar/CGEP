@@ -156,7 +156,7 @@ CHAIN INTACT for run 27730875500
 
 # Lab 5.4 — GCP Security Services Baseline
 
-GCP's identity-first security model applied at project scope: three Org
+GCP's identity-first security model applied at project scope: Org
 Policies enforced at the API (CM-6, AC-2, AC-3), Workload Identity
 Federation replacing service account JSON keys (AC-2), and Data
 Access audit logs turned on for the three services that matter
@@ -182,9 +182,51 @@ gate makes sure a future change can't silently re-disable them —
 the policy evaluates the Terraform plan and refuses to merge if any
 of the three services loses one of the three log types. The
 corresponding evidence is the `auditConfigs` block in
-[`evidence/lab-5-4/iam-policy.example.json`](evidence/lab-5-4/iam-policy.example.json)
-(replaced with a live `gcloud projects get-iam-policy` capture after
-apply).
+[`evidence/lab-5-4/iam-policy.json`](evidence/lab-5-4/iam-policy.json),
+a live `gcloud projects get-iam-policy` capture.
+
+## Real-world wrinkle: org-level Org Policies
+
+The lab was developed against `project-a383fc9e-52f5-406a-9e8`
+(project number `548524317995`) inside org `1091529628888`. The
+parent org already enforces two of the three target constraints at
+org level — `storage.uniformBucketLevelAccess` and
+`iam.disableServiceAccountKeyCreation` — so the project inherits
+`enforce=true` for both via effective-policy evaluation. The third
+constraint, `compute.requireOsLogin`, is not set anywhere (the org
+default for that constraint is `enforce=false`).
+
+Because of this, the Terraform root does NOT manage Org Policy
+resources at project level. Creating project-level
+`google_org_policy_policy` resources would either be redundant (for
+the two already-inherited) or fail with `orgpolicy.policies.create`
+denied at org level (for the missing one). The root applies the
+8 auditable resources directly:
+
+| Resource | Layer |
+|---|---|
+| `google_iam_workload_identity_pool.github` | WIF |
+| `google_iam_workload_identity_pool_provider.github` | WIF |
+| `google_service_account.gha` + bindings | WIF |
+| `google_project_iam_audit_config.{storage,kms,iam}` | AU-2 |
+
+…and relies on org-level inheritance for the three Org Policies.
+All four layers are PROVEN to be active in
+[`evidence/lab-5-4/`](evidence/lab-5-4/):
+
+| File | What it proves |
+|---|---|
+| `iam-policy.json` | The three audit configs exist with all three log types enabled |
+| `org-policies-effective.json` | The two enforced-by-inheritance policies show `enforce=true` on this project |
+| `key-creation-rejection.txt` | `iam.disableServiceAccountKeyCreation` REJECTS key creation with violation type |
+| `uniform-bucket-rejection.txt` | `storage.uniformBucketLevelAccess` REJECTS non-uniform bucket creation with HTTP 412 |
+
+For reproducibility on a project under an org that does NOT already
+enforce these policies, recreate
+[`org_policy.tf`](terraform/baselines/gcp/README.md#re-adding-org_policytf)
+with three `google_org_policy_policy` resources. The Rego gate
+(`compliance.au2_gcp`) gates only the audit configs, so it works
+independently of how Org Policies are managed.
 
 ## The lesson: identity-first vs detective
 

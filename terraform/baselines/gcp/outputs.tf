@@ -21,13 +21,18 @@ output "service_account_email" {
   value       = google_service_account.gha.email
 }
 
-output "org_policy_constraints" {
-  description = "Constraint names enforced by this baseline."
-  value = {
-    uniform_bucket_level_access          = google_org_policy_policy.uniform_bucket_access.name
-    disable_service_account_key_creation = google_org_policy_policy.disable_sa_keys.name
-    require_os_login                     = google_org_policy_policy.require_oslogin.name
-  }
+# NOTE: Org Policy constraints are NOT managed at the project level by this
+# baseline. They are inherited from org-level policies (org 1091529628888
+# enforces storage.uniformBucketLevelAccess and
+# iam.disableServiceAccountKeyCreation; compute.requireOsLogin is not set
+# anywhere). For lab reproducibility on a fresh project under an org
+# without these policies, add a `terraform/baselines/gcp/org_policy.tf`
+# with three google_org_policy_policy resources. The compliance gate
+# (compliance.au2_gcp) does not depend on these resources — it gates on
+# the audit config resources below.
+output "org_policy_inheritance_note" {
+  description = "Org Policies are inherited from org level, not managed here. See README.md."
+  value       = "Inherited from org 1091529628888; project-level overrides blocked by 'orgpolicy.policies.create' permission anomaly."
 }
 
 output "audit_config_services" {

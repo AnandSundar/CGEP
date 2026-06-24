@@ -1,0 +1,44 @@
+=== Uniform Bucket Access: REST API enforcement test ===
+Project: 548524317995
+Token: obtained via 'gcloud auth print-access-token'
+
+=== step 1: create bucket via REST with uniformBucketLevelAccess.enabled=FALSE ===
+  (this is the violation; org policy is enforce=true so this should be REJECTED)
+
+  HTTP response code: 412
+  Response body:
+    {
+        "error": {
+            "code": 412,
+            "message": "Request violates constraint 'constraints/storage.uniformBucketLevelAccess'",
+            "errors": [
+                {
+                    "message": "Request violates constraint 'constraints/storage.uniformBucketLevelAccess'",
+                    "domain": "global",
+                    "reason": "conditionNotMet",
+                    "locationType": "header",
+                    "location": "If-Match"
+                }
+            ]
+        }
+    }
+
+  -> POLICY REJECTED: HTTP 412
+  -> violation type: constraints/storage.uniformBucketLevelAccess
+
+=== step 2: create bucket via REST with uniformBucketLevelAccess enabled (allowed) ===
+  (control test: this SHOULD succeed and the bucket should come back with uniform access on)
+
+  HTTP response code: 200
+  -> bucket created; uniform access should be FORCED on
+
+=== step 3: re-describe bucket to see actual uniformBucketLevelAccess state ===
+  bucket: cgep-rest-test-1782337556
+  uniformBucketLevelAccess.enabled = True
+  uniformBucketLevelAccess.lockTime = None
+
+  CONCLUSION: org policy storage.uniformBucketLevelAccess is
+  ACTIVE on this project (effective=true via inheritance).
+
+=== cleanup: delete test bucket ===
+  DELETE HTTP code: 204

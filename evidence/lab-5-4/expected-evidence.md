@@ -1,73 +1,84 @@
 # Evidence — Lab 5.4
 
 This directory collects the artifacts that prove the GCP security
-baseline is in effect. The portfolio submission checklist calls out
-two of them; the rest are captured here for completeness.
+baseline is in effect. Captured against `project-a383fc9e-52f5-406a-9e8`
+(project number `548524317995`) on 2026-06-24.
 
 ## Files
 
-| File | What it is | When it exists |
+| File | What it proves | How it was captured |
 |---|---|---|
-| `iam-policy.example.json` | Illustrative shape of the expected `auditConfigs` block. Replace with a live capture before submitting. | Always (placeholder) |
-| `iam-policy.json` | Live `gcloud projects get-iam-policy` output. Captured AFTER `terraform apply`. | After apply |
-| `org-policies.json` | Live `gcloud org-policies list` output (filtered). | After apply |
-| `wif-pool.json` | `gcloud iam workload-identity-pools describe github-actions --location=global --format=json` | After apply |
-| `key-creation-rejection.txt` | Captured stderr of `gcloud iam service-accounts keys create` — proves the Org Policy is REJECTING (not flagging, REJECTING) the action. | After apply + Org Policy propagation |
-| `audit-log-read-evidence.json` | `gcloud logging read 'protoPayload.serviceName="storage.googleapis.com"'` — proves Data Access logs are actually flowing. | 30+ seconds after a `gsutil ls` |
+| `iam-policy.json` | The three `google_project_iam_audit_config` resources (storage/KMS/IAM) are applied — each with `DATA_READ`, `DATA_WRITE`, and `ADMIN_READ` enabled. | `gcloud projects get-iam-policy project-a383fc9e-52f5-406a-9e8 --format=json` |
+| `org-policies-effective.json` | The two Org Policies (`storage.uniformBucketLevelAccess`, `iam.disableServiceAccountKeyCreation`) are ENFORCED at the project level via inheritance from org `1091529628888`. `compute.requireOsLogin` is the org default (`enforce=false`). | `gcloud org-policies describe ... --project=... --effective --format=json` |
+| `key-creation-rejection.txt` | The `iam.disableServiceAccountKeyCreation` Org Policy is ACTIVE: `gcloud iam service-accounts keys create` returns `FAILED_PRECONDITION` with violation type `constraints/iam.disableServiceAccountKeyCreation`. | `gcloud iam service-accounts keys create /tmp/sa-key-evidence.json --iam-account=$SA` |
+| `uniform-bucket-rejection.txt` | The `storage.uniformBucketLevelAccess` Org Policy is ACTIVE: REST API `storage.buckets.insert` with `iamConfiguration.uniformBucketLevelAccess.enabled=false` returns HTTP 412 with violation type `constraints/storage.uniformBucketLevelAccess`. | `curl -X POST .../storage/v1/b?project=$PROJECT_NUM` with `iamConfiguration.uniformBucketLevelAccess.enabled=false` |
 
 ## Capture procedure
 
-Run these after `terraform apply -auto-approve` succeeds AND after
-the 5-10 minute Org Policy propagation window. Save each command's
-output into the matching file.
+### `iam-policy.json` (the lab's required evidence)
 
 ```sh
-# 1. iam-policy.json — the lab's required evidence
-gcloud projects get-iam-policy "$GCP_PROJECT" --format=json \
+gcloud projects get-iam-policy project-a383fc9e-52f5-406a-9e8 --format=json \
   > evidence/lab-5-4/iam-policy.json
-
-# 2. org-policies.json — proves all three are ENFORCED
-gcloud org-policies list --project="$GCP_PROJECT" --format=json \
-  | jq '[.[] | select(.constraint | startswith("storage.uniform") or
-                                     startswith("iam.disableService") or
-                                     startswith("compute.requireOs"))]' \
-  > evidence/lab-5-4/org-policies.json
-
-# 3. wif-pool.json — proves the WIF pool exists with the right provider
-gcloud iam workload-identity-pools describe github-actions \
-  --location=global --project="$GCP_PROJECT" --format=json \
-  > evidence/lab-5-4/wif-pool.json
-
-# 4. key-creation-rejection.txt — the lesson itself, captured as proof
-gcloud iam service-accounts keys create /tmp/should-not-exist.json \
-  --iam-account="cgep-grc-gate-sa@${GCP_PROJECT}.iam.gserviceaccount.com" \
-  --project="$GCP_PROJECT" \
-  2> evidence/lab-5-4/key-creation-rejection.txt || true
-grep -q "FAILED_PRECONDITION" evidence/lab-5-4/key-creation-rejection.txt \
-  || echo "WARN: Org Policy has not propagated yet — retry in 5 minutes"
-
-# 5. audit-log-read-evidence.json — proves the logs are actually flowing
-gsutil ls "gs://${GCP_PROJECT}-test-bucket" || true
-sleep 30  # log delivery latency
-gcloud logging read \
-  'protoPayload.serviceName="storage.googleapis.com" AND protoPayload.methodName=~"storage.objects.list"' \
-  --limit=5 --format=json --project="$GCP_PROJECT" \
-  > evidence/lab-5-4/audit-log-read-evidence.json
 ```
 
-## Why the placeholder is here
+### `org-policies-effective.json`
 
-The repo is committed without a real GCP project behind it; the
-lab is run on a personal project. The `iam-policy.example.json`
-documents the expected shape so a reviewer can confirm (a) the
-expected three services are configured, (b) all three log types
-appear for each, (c) the JSON shape matches `gcloud` output. The
-real evidence capture is one `gcloud` command away and replaces
-this file with a byte-identical structure but project-specific
-Etag.
+```sh
+for c in storage.uniformBucketLevelAccess iam.disableServiceAccountKeyCreation compute.requireOsLogin; do
+  gcloud org-policies describe "$c" \
+    --project=project-a383fc9e-52f5-406a-9e8 --effective --format=json
+done
+```
+
+### `key-creation-rejection.txt`
+
+```sh
+# step 1: create a temporary SA (allowed; not blocked by any policy)
+SA=$(gcloud iam service-accounts create "cgep-evidence-tmp" \
+  --project=project-a383fc9e-52f5-406a-9e8 \
+  --format='value(email)')
+
+# step 2: try to create a JSON key for it — should be REJECTED
+gcloud iam service-accounts keys create /tmp/sa-key.json \
+  --iam-account="$SA" --project=project-a383fc9e-52f5-406a-9e8 \
+  2> evidence/lab-5-4/key-creation-rejection.txt || true
+
+# step 3: cleanup
+gcloud iam service-accounts delete "$SA" \
+  --project=project-a383fc9e-52f5-406a-9e8 --quiet
+```
+
+### `uniform-bucket-rejection.txt`
+
+```sh
+TOKEN=$(gcloud auth print-access-token)
+BUCKET="cgep-evil-bucket-$(date +%s)"
+PROJECT_NUM=548524317995
+
+# violation attempt
+curl -s -X POST \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d "{\"name\":\"$BUCKET\",\"iamConfiguration\":{\"uniformBucketLevelAccess\":{\"enabled\":false}}}" \
+  "https://storage.googleapis.com/storage/v1/b?project=$PROJECT_NUM"
+# → HTTP 412 "Request violates constraint 'constraints/storage.uniformBucketLevelAccess'"
+```
+
+## Why the example.json was removed
+
+The repo previously carried `iam-policy.example.json` as a placeholder
+showing the expected shape. After the live `terraform apply` succeeded,
+it was replaced with `iam-policy.json` (the real `gcloud` capture). The
+shape is identical except for the project-specific Etag.
 
 ## README cross-references
 
-The lesson "Data Access logs are off by default" is documented in
-[terraform/baselines/gcp/README.md](../../terraform/baselines/gcp/README.md)
-under the section of the same name.
+The lessons in this evidence directory are documented in
+[terraform/baselines/gcp/README.md](../../terraform/baselines/gcp/README.md):
+
+- "Org Policy note" — why this root doesn't manage Org Policy resources
+- "Data Access logs are off by default" — the AU-2 lesson
+
+And in the portfolio writeup: [WRITEUP.md](../../WRITEUP.md) under
+"Lab 5.4 — GCP Security Services Baseline".

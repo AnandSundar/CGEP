@@ -16,6 +16,16 @@
 # JSON keys anywhere in this root — the Org Policy
 # `iam.disableServiceAccountKeyCreation = TRUE` would reject the
 # creation of one even if you tried.
+#
+# ADC + orgpolicy.googleapis.com / cloudresourcemanager.googleapis.com
+# REQUIRE a quota project. When using user credentials (the result of
+# `gcloud auth application-default login`), set:
+#
+#   export GOOGLE_CLOUD_QUOTA_PROJECT="$GCP_PROJECT"
+#
+# before `terraform apply`. Without it, Org Policy and audit-config
+# resources fail with 403 "SERVICE_DISABLED" and consumer set to a
+# different project than your target.
 
 terraform {
   required_version = ">= 1.6"

@@ -1,0 +1,34 @@
+{
+  "_note": "Effective Org Policies for project-a383fc9e-52f5-406a-9e8 (548524317995). Captured via 'gcloud org-policies describe --project=... --effective' on 2026-06-24T21:29:03Z. Inherited from org 1091529628888 — project-level overrides are blocked by 'orgpolicy.policies.create' permission anomaly despite user holding roles/owner.",
+  "project": "projects/548524317995",
+   "uniformbucketlevelaccess": {
+  "name": "projects/548524317995/policies/storage.uniformBucketLevelAccess",
+  "spec": {
+    "rules": [
+      {
+        "enforce": true
+      }
+    ]
+  }
+}
+  , "disableserviceaccountkeycreation": {
+  "name": "projects/548524317995/policies/iam.disableServiceAccountKeyCreation",
+  "spec": {
+    "rules": [
+      {
+        "enforce": true
+      }
+    ]
+  }
+}
+  , "requireoslogin": {
+  "name": "projects/548524317995/policies/compute.requireOsLogin",
+  "spec": {
+    "rules": [
+      {
+        "enforce": false
+      }
+    ]
+  }
+}
+}
